@@ -21,6 +21,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role',
     ];
 
     /**
@@ -44,5 +45,51 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    // Role constants
+    const ROLE_ADMIN = 'admin';
+    const ROLE_TEACHER = 'teacher';
+    const ROLE_USER = 'user';
+
+    // Role checking methods
+    public function isAdmin(): bool
+    {
+        return $this->role === self::ROLE_ADMIN;
+    }
+
+    public function isTeacher(): bool
+    {
+        return $this->role === self::ROLE_TEACHER;
+    }
+
+    public function isUser(): bool
+    {
+        return $this->role === self::ROLE_USER;
+    }
+
+    public function canManageStudents(): bool
+    {
+        return in_array($this->role, [self::ROLE_ADMIN, self::ROLE_TEACHER]);
+    }
+
+    public function canCreate(): bool
+    {
+        return $this->canManageStudents();
+    }
+
+    public function canEdit(): bool
+    {
+        return $this->canManageStudents();
+    }
+
+    public function canDelete(): bool
+    {
+        return $this->isAdmin();
+    }
+
+    public function canView(): bool
+    {
+        return true; // All authenticated users can view
     }
 }
