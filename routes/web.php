@@ -15,6 +15,7 @@ use App\Http\Controllers\SchoolSettingController;
 use App\Http\Controllers\DatabaseController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\CheckInController;
 
 // Public routes
 Route::get('/', [WelcomeController::class, 'index'])->name('welcome');
@@ -22,6 +23,13 @@ Route::get('/announcements', [AnnouncementController::class, 'publicIndex'])->na
 Route::get('/announcements/{id}', [AnnouncementController::class, 'publicShow'])->name('announcements.public.show');
 Route::get('/blogs', [BlogController::class, 'publicIndex'])->name('blogs.public.index');
 Route::get('/blogs/{slug}', [BlogController::class, 'publicShow'])->name('blogs.public.show');
+
+// Public check-in routes (accessible without login for QR scanning)
+Route::get('/scan/{code?}', [CheckInController::class, 'scan'])->name('check-ins.scan');
+Route::post('/scan/submit', [CheckInController::class, 'store'])->name('check-ins.scan.submit');
+
+// API routes for real-time data
+Route::get('/api/recent-checkins', [CheckInController::class, 'getRecentCheckins'])->name('api.recent-checkins');
 
 // Authentication routes
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -57,6 +65,13 @@ Route::middleware(['auth'])->group(function () {
         // Line attendances
         Route::resource('line-attendances', LineAttendanceController::class);
         Route::post('/line-attendances/bulk', [LineAttendanceController::class, 'bulkStore'])->name('line-attendances.bulk.store');
+        
+        // Check-ins
+        Route::resource('check-ins', CheckInController::class);
+        Route::get('/check-ins-export', [CheckInController::class, 'export'])->name('check-ins.export');
+        Route::get('/check-ins-manual', [CheckInController::class, 'manual'])->name('check-ins.manual');
+        Route::post('/check-ins-manual', [CheckInController::class, 'storeManual'])->name('check-ins.manual.store');
+        Route::post('/check-ins-generate-qr', [CheckInController::class, 'generateQR'])->name('check-ins.generate-qr');
         
         // Welcome content management
         Route::get('/admin/welcome/manage', [WelcomeController::class, 'manage'])->name('admin.welcome.manage');
