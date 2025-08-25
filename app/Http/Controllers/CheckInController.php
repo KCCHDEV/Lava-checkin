@@ -199,7 +199,8 @@ class CheckInController extends Controller
     public function storeManual(Request $request)
     {
         $request->validate([
-            'student_id' => 'required|exists:students,id',
+            'student_ids' => 'required|array|min:1',
+            'student_ids.*' => 'exists:students,id',
             'check_in_date' => 'required|date',
             'check_in_time' => 'required|date_format:H:i',
             'status' => 'required|in:present,late',
@@ -207,33 +208,55 @@ class CheckInController extends Controller
             'note' => 'nullable|string|max:500'
         ]);
 
-        // Check if student already checked in on this date
-        $existingCheckIn = CheckIn::where('student_id', $request->student_id)
-            ->whereDate('check_in_date', $request->check_in_date)
-            ->first();
+        $checkInDateTime = Carbon::createFromFormat('Y-m-d H:i', $request->check_in_date . ' ' . $request->check_in_time);
+        
+        $created = 0;
+        $skipped = 0;
+        $skippedNames = [];
 
-        if ($existingCheckIn) {
-            return redirect()->back()->with('error', 'นักเรียนคนนี้เช็คชื่อในวันนี้แล้ว');
+        foreach ($request->student_ids as $studentId) {
+            // Check if student already checked in on this date
+            $existingCheckIn = CheckIn::where('student_id', $studentId)
+                ->whereDate('check_in_date', $request->check_in_date)
+                ->first();
+
+            if ($existingCheckIn) {
+                $student = Student::find($studentId);
+                $skippedNames[] = $student->name ?? "ID: {$studentId}";
+                $skipped++;
+                continue;
+            }
+
+            CheckIn::create([
+                'student_id' => $studentId,
+                'recorded_by' => auth()->id(),
+                'check_in_code' => CheckIn::generateCheckInCode(),
+                'check_in_time' => $checkInDateTime,
+                'check_in_date' => $request->check_in_date,
+                'status' => $request->status,
+                'location' => $request->location,
+                'device_info' => 'Manual Entry',
+                'ip_address' => $request->ip(),
+                'note' => $request->note,
+                'is_valid' => true
+            ]);
+
+            $created++;
         }
 
-        $checkInDateTime = Carbon::createFromFormat('Y-m-d H:i', $request->check_in_date . ' ' . $request->check_in_time);
+        // Clear cache
+        cache()->forget('today_checkins_stats');
+        cache()->forget('recent_checkins');
 
-        CheckIn::create([
-            'student_id' => $request->student_id,
-            'recorded_by' => auth()->id(),
-            'check_in_code' => CheckIn::generateCheckInCode(),
-            'check_in_time' => $checkInDateTime,
-            'check_in_date' => $request->check_in_date,
-            'status' => $request->status,
-            'location' => $request->location,
-            'device_info' => 'Manual Entry',
-            'ip_address' => $request->ip(),
-            'note' => $request->note,
-            'is_valid' => true
-        ]);
+        $message = "เพิ่มข้อมูลการเช็คชื่อเรียบร้อยแล้ว: {$created} คน";
+        if ($skipped > 0) {
+            $message .= " (ข้าม {$skipped} คน ที่เช็คชื่อแล้ว)";
+        }
+
+        $messageType = $skipped > 0 ? 'warning' : 'success';
 
         return redirect()->route('check-ins.index')
-            ->with('success', 'เพิ่มข้อมูลการเช็คชื่อเรียบร้อยแล้ว');
+            ->with($messageType, $message);
     }
 
     /**
@@ -313,5 +336,42 @@ class CheckInController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Get recent check-ins for real-time display.
+     */
+    public function getRecentCheckins(Request $request)
+    {
+        $recentCheckins = CheckIn::with(['student', 'recorder'])
+            ->whereDate('check_in_date', Carbon::today())
+            ->orderBy('check_in_time', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function ($checkIn) {
+                return [
+                    'id' => $checkIn->id,
+                    'student_name' => $checkIn->student->name ?? 'N/A',
+                    'student_code' => $checkIn->student->student_code ?? 'N/A',
+                    'check_in_time' => $checkIn->check_in_time->format('H:i:s'),
+                    'status' => $checkIn->status,
+                    'status_text' => $checkIn->status_text,
+                    'status_color' => $checkIn->status_color,
+                    'location' => $checkIn->location
+                ];
+            });
+
+        $stats = [
+            'total' => CheckIn::whereDate('check_in_date', Carbon::today())->count(),
+            'present' => CheckIn::whereDate('check_in_date', Carbon::today())->where('status', 'present')->count(),
+            'late' => CheckIn::whereDate('check_in_date', Carbon::today())->where('status', 'late')->count(),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'checkins' => $recentCheckins,
+            'stats' => $stats,
+            'timestamp' => Carbon::now()->format('H:i:s')
+        ]);
     }
 }

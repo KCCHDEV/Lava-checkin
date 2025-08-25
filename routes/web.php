@@ -28,6 +28,9 @@ Route::get('/blogs/{slug}', [BlogController::class, 'publicShow'])->name('blogs.
 Route::get('/scan/{code?}', [CheckInController::class, 'scan'])->name('check-ins.scan');
 Route::post('/scan/submit', [CheckInController::class, 'store'])->name('check-ins.scan.submit');
 
+// API routes for real-time data
+Route::get('/api/recent-checkins', [CheckInController::class, 'getRecentCheckins'])->name('api.recent-checkins');
+
 // Authentication routes
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
